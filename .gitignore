@@ -2,3 +2,6 @@
 .bz2
 .jsonl
 my-venv/
+core/__pycache__/
+data/*.bz2
+data/*.jsonl
