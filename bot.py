@@ -212,7 +212,7 @@ class FactionBot(commands.Bot):
             inline=False
         )
         embed.add_field(
-            name="Fonte"
+            name="Fonte",
             value=f"{conflict['source']}",
             inline=False
         )
