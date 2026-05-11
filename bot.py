@@ -22,7 +22,7 @@ if not DISCORD_TOKEN or not CHANNEL_ID_RAW:
 DISCORD_CHANNEL_ID = int(CHANNEL_ID_RAW)
 
 # ---- CONFIGURATIONS ----
-TARGET_FACTIONS = ["MCC 445 Services", "Galileo Corporation"]
+TARGET_FACTIONS = ["MCC 445 Services", "Galileo Corporation", "Expanders Corp"]
 relayEDDN = "tcp://eddn.edcd.io:9500"
 timeoutEDDN = 600000
 
@@ -31,7 +31,7 @@ class FactionBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
-        super().__init__(command_prefix="!", intents=intents)
+        super().__init__(command_prefix="$", intents=intents)
 
         #ToDo -> solve related error
         #self.add_command(self.update_dumps)
@@ -105,7 +105,8 @@ class FactionBot(commands.Bot):
                 'f2_days_won': c['f2_days_won'],
                 'stake2': c['stake2'],
                 'last_updated': c['last_updated'],
-                'timestamp': c['timestamp']
+                'timestamp': c['timestamp'],
+                'source': c['source']
             }
             await self.send_discord_alert(conflict_data, "STARTUP_LOAD")
         
@@ -146,7 +147,7 @@ class FactionBot(commands.Bot):
                         )
                         
                         if result in ["NEW", "REACTIVATED", "SCORE_CHANGE"]:
-                            await self.send_discord_alert(c, result)
+                            await self.send_discord_alert(c.append({'source': "LIVE"}), result)
             except zmq.error.Again:
                 print("Timeout ZMQ, continuing to listen...")
             except zlib.error:
@@ -154,7 +155,7 @@ class FactionBot(commands.Bot):
             except json.JSONDecodeError:
                 print("Error during JSON reading")
             except Exception as e:
-                print(f"Unexpected error: {e}")
+                print(f"Unexpected error in EDDN listener: {e}")
 
 
 
@@ -207,7 +208,13 @@ class FactionBot(commands.Bot):
         )
         embed.add_field(
             name="Timestamp Messaggio da EDDN",
-            value=f"{conflict['timestamp']}"
+            value=f"{conflict['timestamp']}",
+            inline=False
+        )
+        embed.add_field(
+            name="Fonte"
+            value=f"{conflict['source']}",
+            inline=False
         )
         embed.set_footer(text="Fonte: EDDN Tracker")
 
