@@ -209,14 +209,13 @@ class FactionBot(commands.Bot):
         embed.add_field(
             name="Timestamp Messaggio da EDDN",
             value=f"{conflict['timestamp']}",
-            inline=False
+            inline=True
         )
         embed.add_field(
-            name="Fonte",
+            name="Fonte Messaggio",
             value=f"{conflict['source']}",
             inline=False
         )
-        embed.set_footer(text="Fonte: EDDN Tracker")
 
         await channel.send(embed=embed)# Avvio
 
