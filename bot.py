@@ -141,7 +141,7 @@ class FactionBot(commands.Bot):
                         # Passa al DB e controlla se è un evento degno di nota
                         result = upsert_conflict(
                             self.db_conn, c['system'], c['faction_1'], c['faction_2'],
-                            c['war_type'], c['status'], c['f1_days'], c['f2_days'], 
+                            c['war_type'], c['status'], c['f1_days_won'], c['f2_days_won'], 
                             c['stake1'], c['stake2'], c['timestamp'], "LIVE"
                         )
                         
