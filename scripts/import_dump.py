@@ -38,7 +38,7 @@ except OSError as e:
 
 
 # ---- FUNCTIONS ----
-def download_latest_dumps():
+def download_bz2_dumps():
     """
     Find and download Journal.Location, Journal.FSDJump, Journal.CarrierJump
     .bz2 files of the current month inside the archive
@@ -120,7 +120,7 @@ def download_latest_dumps():
                     bar.update(len(chunk))
     return location_files
 
-def download_latest_dump():
+def download_jsonl_dumps():
     """
     Find and download Journal.Location, Journal.FSDJump, Journal.CarrierJump
     .jsonl files in the base archive
@@ -274,11 +274,20 @@ def clean_old_dumps(all_valid_files):
     if deleted_count == 0:
         print("No old dumps found. Directory is clean!")
 
+def delete_dumps(all_valid_files):
+    for file_name in all_valid_files:
+    dump_file_path = os.path.join(DATA_DIR, file_name)
+        if os.path.exists(dump_file_path):
+            try:
+                os.remove(dump_file_path)
+                print(f"Removed elaborated dump from /data: {file_name}")
+            except OSError as e:
+                print(f"Error while deleting {file_name}: {e}")
+    print("Directory /data cleaned!")
 
-
-def process_dump():
-    valid_bz2_files = download_latest_dumps()
-    valid_jsonl_files = download_latest_dump()
+def process_dumps():
+    valid_bz2_files = download_bz2_dumps()
+    valid_jsonl_files = download_jsonl_dumps()
     
     if valid_bz2_files is None and valid_jsonl_files is None:
         print("Downloading failed. Import aborted.")
@@ -296,5 +305,10 @@ def process_dump():
     elaborate_data(conn)
     conn.close()
 
+    delete_dumps(all_valid_files)
+
 if __name__ == "__main__":
-    process_dump()
+    process_dumps()
+
+# ___TODO:  After importing all data from dumps into database
+#           delete downloaded dumps from data

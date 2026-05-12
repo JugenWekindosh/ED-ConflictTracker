@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 def get_connection(db_path='data/conflicts.db'):
     conn = sqlite3.connect(db_path)
@@ -78,14 +79,16 @@ def print_all_conflicts(conn):
 
 def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f1_days, f2_days, stake1, stake2, timestamp, source):
     cursor = conn.cursor()
-    now = datetime.now().isoformat()
+    roma_tz = ZoneInfo("Europe/Rome")
+    now = datetime.now(roma_tz).isoformat()
 
     # Sorts factions alphabetically 
     f_a, f_b = sorted([faction_1, faction_2])
     
-    # exchange scores if sorted alphabetically
+    # exchange scores and assets if sorted alphabetically
     if f_a != faction_1:
         f1_days, f2_days = f2_days, f1_days
+        stake1, stake2 = stake2, stake1
 
     clean_status = status.strip() if status else ""
     if clean_status == "":
@@ -130,8 +133,8 @@ def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f
 
 def cleanup_old_conflicts(conn, days=7):
     cursor = conn.cursor()
-    threshold_date = datetime.now() - timedelta(days=days)
-    threshold_date = threshold_date.isoformat()
+    tz = ZoneInfo("Europe/Rome")
+    threshold_date = (datetime.now(tz) - timedelta(days=days)).isoformat()
 
     try:
         cursor.execute('''

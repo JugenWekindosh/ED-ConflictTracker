@@ -6,6 +6,8 @@ import zlib
 import json
 import os
 from dotenv import load_dotenv
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from core import get_connection, setup_db, upsert_conflict, get_active_conflicts, print_all_conflicts, cleanup_old_conflicts
 from core import extract_relevant_conflicts
@@ -86,7 +88,6 @@ class FactionBot(discord.Client):
                         )
                         
                         if result in ["NEW", "REACTIVATED", "SCORE_CHANGE"]:
-                            c.append({'source:' "LIVE"})
                             await self.send_discord_alert(c, result)
             except zmq.error.Again:
                 print("Timeout ZMQ, continuing to listen...")
@@ -103,6 +104,115 @@ class FactionBot(discord.Client):
         cleanup_old_conflicts(self.db_conn, days=7)
 
 
+
+
+
+# ---- FUNCTIONS
+    def _format_timestamp(self, ts_string):
+        """Converte il timestamp EDDN nel formato Giorno Mese Anno Ore:Minuti (Roma)"""
+        try:
+            # Rimuove la 'Z' finale o parti extra se presenti e parsa l'ISO format
+            ts_obj = datetime.fromisoformat(ts_string.replace('Z', '+00:00'))
+            # Converte al fuso orario di Roma
+            roma_tz = ZoneInfo("Europe/Rome")
+            ts_roma = ts_obj.astimezone(roma_tz)
+            return ts_roma.strftime("%d/%m/%Y %H:%M")
+        except Exception as e:
+            print(f"Errore formattazione data: {e}")
+            return ts_string
+
+
+
+    def _create_conflict_embed(self, conflict, event_type=None):
+        """Crea un embed coerente per ogni tipo di aggiornamento"""
+        
+        status_map = {
+            "NEW": ("NUOVA GUERRA RILEVATA", discord.Color.red()),
+            "REACTIVATED": ("GUERRA RIATTIVATA (Dati LIVE)", discord.Color.red()),
+            "SCORE_CHANGE": ("AGGIORNAMENTO PUNTEGGIO", discord.Color.orange()),
+            "DATABASE": ("STATO CONFLITTO (Database)", discord.Color.blue())
+        }
+
+        title, color = status_map.get(event_type, status_map["DATABASE"])
+
+        embed = discord.Embed(
+            title=f"{title} a {conflict['system']}", 
+            color=color,
+            timestamp=datetime.now()
+        )
+        
+        formatted_date = self._format_timestamp(conflict['timestamp'])
+
+        embed.add_field(
+            name="Tipo e Stato", 
+            value=f"{conflict['war_type'].capitalize()} ({conflict['status']})", 
+            inline=False
+        )
+        embed.add_field(
+            name=f"{conflict['faction_1']}", 
+            value=f"Giorni vinti: **{conflict['f1_days_won']}**\nAssetto: *{conflict.get('stake1', '----')}*",
+            inline=True
+        )
+        embed.add_field(
+            name=f"{conflict['faction_2']}", 
+            value=f"Giorni vinti: **{conflict['f2_days_won']}**\nAssetto: *{conflict.get('stake2', '----')}*",
+            inline=True
+        )
+
+        embed.add_field(name="", value="", inline=False) # Spazio vuoto per formattazione
+        
+        embed.add_field(name="Ultimo Update EDDN", value=formatted_date, inline=True)
+        embed.add_field(name="Fonte", value=conflict.get('source', 'LIVE'), inline=True)
+        
+        embed.set_footer(text="Elite Dangerous Data Network | NovaCorp BGS Bot")
+        return embed
+
+
+# ---- ASYNC FUNCTIONS
+    async def send_discord_alert(self, conflict, event_type):
+        """Invia alert in tempo reale"""
+        channel = self.get_channel(DISCORD_CHANNEL_ID)
+        if not channel:
+            print(f"Error in send_discord_alert: Channel {DISCORD_CHANNEL_ID} not found.")
+            return
+        embed = self._create_conflict_embed(conflict, event_type)
+        await channel.send(embed=embed)
+        print("Discord alert sent")
+
+
+
+    async def send_conflicts_status(self):
+        """Invia lo stato attuale dal database"""
+        channel = self.get_channel(DISCORD_CHANNEL_ID)
+        if not channel:
+            print(f"Error in send_conflicts_status: Channel {DISCORD_CHANNEL_ID} not found.")
+            return
+
+        conflicts = get_active_conflicts(self.db_conn)
+        if not conflicts:
+            print("[DB] Tabella conflitti vuota.")
+            return
+
+        for c in conflicts:
+            # Mappatura chiavi DB -> Formato atteso dall'embed builder
+            conflict_data = {
+                'system': c['system_name'],
+                'war_type': c['war_type'],
+                'status': c['status'],
+                'faction_1': c['faction_1'],
+                'stake1': c['stake1'],
+                'f1_days_won': c['f1_days_won'],
+                'faction_2': c['faction_2'],
+                'f2_days_won': c['f2_days_won'],
+                'stake2': c['stake2'],
+                'timestamp': c['timestamp'],
+                'source': c['source'],
+                'is_active': c['is_active']
+            }
+            if conflict_data['is_active']:
+                embed = self._create_conflict_embed(conflict_data, "DATABASE")
+                await channel.send(embed=embed)
+        print("Conflicts status sent")
 
 
 
@@ -123,136 +233,10 @@ class FactionBot(discord.Client):
 
         print_all_conflicts(self.db_conn)
 
-    async def send_discord_alert(self, conflict, event_type):
-        """Notify conflict update from EDDN listener sending embedded message"""
-        channel = self.get_channel(DISCORD_CHANNEL_ID)
-        if not channel:
-            print(f"Error in send_discord_alert: Channel {DISCORD_CHANNEL_ID} not found.")
-            return
 
-        titles = {
-            "NEW": "NUOVA GUERRA RILEVATA",
-            "REACTIVATED": "GUERRA RIATTIVATA (Dati LIVE)",
-            "SCORE_CHANGE": "AGGIORNAMENTO PUNTEGGIO"
-        }
-        if event_type == "SCORE_CHANGE": color = discord.Color.orange()
-        else: color = discord.Color.red()
 
-        embed = discord.Embed(
-            title=f"{titles.get(event_type, 'Conflitto')} a {conflict['system']}", 
-            color=color
-        )
-        
-        embed.add_field(
-            name="Tipo e Stato", 
-            value=f"{conflict['war_type'].capitalize()} ({conflict['status']})", 
-            inline=False
-        )
-        embed.add_field(
-            name=conflict['faction_1'], 
-            value=f"Giorni vinti: {conflict['f1_days_won']}",
-            inline=False
-        )
-        embed.add_field(
-            name="Assetto in perdita:",
-            value=f"{conflict['stake1']}",
-            inline=False
-            )
-        embed.add_field(
-            name=conflict['faction_2'], 
-            value=f"Giorni vinti: {conflict['f2_days_won']}",
-            inline=False
-        )
-        embed.add_field(
-            name="Assetto in perdita:",
-            value=f"{conflict['stake2']}",
-            inline=False
-        )
-        embed.add_field(
-            name="Timestamp Messaggio da EDDN",
-            value=f"{conflict['timestamp']}",
-            inline=False
-        )
-        embed.add_field(
-            name="Fonte Messaggio",
-            value=f"{conflict['source']}",
-            inline=False
-        )
-        await channel.send(embed=embed)
-        print("Discord alert sent")
 
-    async def send_conflicts_status(self):
-        channel = self.get_channel(DISCORD_CHANNEL_ID)
-        if not channel:
-            print(f"Error in send_conflicts_status: Channel {DISCORD_CHANNEL_ID} not found.")
-            return
-
-        conflicts = get_active_conflicts(self.db_conn)
-
-        if not conflicts:
-            print("[DB] empty 'conflicts' table.")
-            return
-
-        for c in conflicts:
-            # Converting sqlite3.Row object as dict
-            conflict_data = {
-                'system': c['system_name'],
-                'war_type': c['war_type'],
-                'status': c['status'],
-                'faction_1': c['faction_1'],
-                'stake1': c['stake1'],
-                'f1_days_won': c['f1_days_won'],
-                'faction_2': c['faction_2'],
-                'f2_days_won': c['f2_days_won'],
-                'stake2': c['stake2'],
-                'last_updated': c['last_updated'],
-                'timestamp': c['timestamp'],
-                'source': c['source'],
-                'is_active': c['is_active']
-            }
-            if conflict_data['is_active']:
-                embed = discord.Embed(
-                    title=f"CONFLITTO IN DATABASE ATTIVO", 
-                    color=discord.Color.blue()
-                )
-                embed.add_field(
-                    name="Tipo e Stato", 
-                    value=f"{conflict_data['war_type'].capitalize()} ({conflict_data['status']})", 
-                    inline=False
-                )
-                embed.add_field(
-                    name=conflict_data['faction_1'], 
-                    value=f"Giorni vinti: {conflict_data['f1_days_won']}",
-                    inline=False
-                )
-                embed.add_field(
-                    name="Assetto in perdita:",
-                    value=f"{conflict_data['stake1']}",
-                    inline=False
-                    )
-                embed.add_field(
-                    name=conflict_data['faction_2'], 
-                    value=f"Giorni vinti: {conflict_data['f2_days_won']}",
-                    inline=False
-                )
-                embed.add_field(
-                    name="Assetto in perdita:",
-                    value=f"{conflict_data['stake2']}",
-                    inline=False
-                )
-                embed.add_field(
-                    name="Timestamp Messaggio da EDDN",
-                    value=f"{conflict_data['timestamp']}",
-                    inline=False
-                )
-                embed.add_field(
-                    name="Fonte Messaggio",
-                    value=f"{conflict_data['source']}",
-                    inline=False
-                )
-                await channel.send(embed=embed)
-        print("Conflicts status sent")
-
+#---- MAIN 
 if __name__ == "__main__":
     if not DISCORD_TOKEN:
         print("ERROR: DISCORD_TOKEN not found. Be sure to have a local environment .env file")
