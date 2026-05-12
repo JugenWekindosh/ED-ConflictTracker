@@ -117,6 +117,7 @@ class FactionBot(discord.Client):
 
         try:
             await channel.purge(limit=100) # Rimuove fino a 100 messaggi recenti
+            print("Pulizia canale completata!")
         except Exception as e:
             print(f"Errore durante la pulizia del canale: {e}")
 

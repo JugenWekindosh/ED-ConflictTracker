@@ -131,12 +131,12 @@ def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f
 def cleanup_old_conflicts(conn, days=7):
     cursor = conn.cursor()
     threshold_date = datetime.now() - timedelta(days=days)
-    threshold_str = threshold_date.strftime('%Y-%m-%d %H:%M:%S')
+    threshold_date = threshold_date.isoformat()
 
     try:
         cursor.execute('''
             DELETE FROM conflicts WHERE last_updated < ?
-        ''', (threshold_str,))
+        ''', (threshold_date,))
         deleted_rows = cursor.rowcount
         conn.commit()
         if deleted_rows > 0:
