@@ -7,7 +7,7 @@ import json
 import os
 from dotenv import load_dotenv
 
-from core import get_connection, setup_db, upsert_conflict, get_active_conflicts, print_all_conflicts
+from core import get_connection, setup_db, upsert_conflict, get_active_conflicts, print_all_conflicts, cleanup_old_conflicts
 from core import extract_relevant_conflicts
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -27,14 +27,11 @@ relayEDDN = "tcp://eddn.edcd.io:9500"
 timeoutEDDN = 600000
 
 # Bot class
-class FactionBot(commands.Bot):
+class FactionBot(discord.Client):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
-        super().__init__(command_prefix="$", intents=intents)
-
-        #ToDo -> solve related error
-        #self.add_command(self.update_dumps)
+        super().__init__(intents=intents)
 
         # Initialize database at start
         self.db_conn = get_connection(os.path.join(BASE_DIR, 'data', 'conflicts.db'))
@@ -43,75 +40,16 @@ class FactionBot(commands.Bot):
 
     async def on_ready(self):
         print(f'Bot online as {self.user}')
-
         if self.first_run:
+            cleanup_old_conflicts(self.db_conn, days=7)
             await self.refresh_status_channel()
+            await self.send_conflicts_status()
             self.first_run = False
 
     async def setup_hook(self):
-        # Start listening to EDDN relay as asynchronous background task when bot boots
         self.eddn_listener.start()
-        print(f'Listening conflicts for: {TARGET_FACTIONS}')
+        self.daily_cleanup.start()
 
-    # ToDo->solve TypeError
-    # discord.ext.commands.errors.CommandInvokeError: 
-    # Command raised an exception: 
-    # TypeError: FactionBot.update_dumps() missing 1 required positional argument: 'ctx'
-    """
-    @commands.command(name="update_dumps")
-    @commands.is_owner()
-    async def update_dumps(self, ctx):
-        await ctx.send("Dump analisys... operation may require some minutes.")
-        try:
-            import asyncio
-            from scripts.import_dump import process_dump
-            await asyncio.to_thread(process_dump) 
-            await ctx.send("Dumps updated!")
-        except Exception as e:
-            await ctx.send(f"Error while updating dumps: {e}")
-            print(f"Error while running process_dump in bot.py: {e}")
-    """
-
-    async def refresh_status_channel(self):
-        """Pulisce il canale e invia lo stato attuale del DB"""
-        channel = self.get_channel(DISCORD_CHANNEL_ID)
-        if not channel:
-            print(f"Error: Channel {DISCORD_CHANNEL_ID} not found.")
-            return
-
-        print("Pulizia canale e invio stato attuale...")
-
-        try:
-            await channel.purge(limit=100) # Rimuove fino a 100 messaggi recenti
-        except Exception as e:
-            print(f"Errore durante la pulizia: {e}")
-
-        conflicts = get_active_conflicts(self.db_conn)
-
-        if not conflicts:
-            print("Database vuoto, nessun messaggio inviato.")
-            return
-
-        for c in conflicts:
-            # Converting sqlite3.Row object as dict
-            conflict_data = {
-                'system': c['system_name'],
-                'war_type': c['war_type'],
-                'status': c['status'],
-                'faction_1': c['faction_1'],
-                'stake1': c['stake1'],
-                'f1_days_won': c['f1_days_won'],
-                'faction_2': c['faction_2'],
-                'f2_days_won': c['f2_days_won'],
-                'stake2': c['stake2'],
-                'last_updated': c['last_updated'],
-                'timestamp': c['timestamp'],
-                'source': c['source']
-            }
-            await self.send_discord_alert(conflict_data, "STARTUP_LOAD")
-        
-        # Stampa a console il contenuto del database
-        print_all_conflicts(self.db_conn)
 
 
 
@@ -119,6 +57,7 @@ class FactionBot(commands.Bot):
     @tasks.loop()
     async def eddn_listener(self):
         """Background task listening to ZMQ messages flux from EDDN relay"""
+        print(f'Listening conflicts for: {TARGET_FACTIONS}')
         ctx = zmq.asyncio.Context()
         subscriber = ctx.socket(zmq.SUB)
         subscriber.setsockopt(zmq.SUBSCRIBE, b"")
@@ -147,7 +86,8 @@ class FactionBot(commands.Bot):
                         )
                         
                         if result in ["NEW", "REACTIVATED", "SCORE_CHANGE"]:
-                            await self.send_discord_alert(c.append({'source': "LIVE"}), result)
+                            c.append({'source:' "LIVE"})
+                            await self.send_discord_alert(c, result)
             except zmq.error.Again:
                 print("Timeout ZMQ, continuing to listen...")
             except zlib.error:
@@ -157,23 +97,44 @@ class FactionBot(commands.Bot):
             except Exception as e:
                 print(f"Unexpected error in EDDN listener: {e}")
 
+    # Daily cleanup
+    @tasks.loop(hours=24)
+    async def daily_cleanup(self):
+        cleanup_old_conflicts(self.db_conn, days=7)
 
 
-    async def send_discord_alert(self, conflict, event_type):
-        """Crea e invia l'Embed su Discord"""
+
+
+
+    async def refresh_status_channel(self):
+        """Pulisce il canale e stampa il DB sulla console"""
         channel = self.get_channel(DISCORD_CHANNEL_ID)
         if not channel:
             print(f"Error: Channel {DISCORD_CHANNEL_ID} not found.")
             return
 
+        print("Pulizia canale...")
+
+        try:
+            await channel.purge(limit=100) # Rimuove fino a 100 messaggi recenti
+        except Exception as e:
+            print(f"Errore durante la pulizia del canale: {e}")
+
+        print_all_conflicts(self.db_conn)
+
+    async def send_discord_alert(self, conflict, event_type):
+        """Notify conflict update from EDDN listener sending embedded message"""
+        channel = self.get_channel(DISCORD_CHANNEL_ID)
+        if not channel:
+            print(f"Error in send_discord_alert: Channel {DISCORD_CHANNEL_ID} not found.")
+            return
+
         titles = {
-            "NEW": " NUOVA GUERRA RILEVATA",
-            "REACTIVATED": "⚠️ GUERRA RIATTIVATA (Dati LIVE)",
-            "SCORE_CHANGE": "⚔️AGGIORNAMENTO PUNTEGGIO",
-            "STARTUP_LOAD": " STATO ATTUALE CONFLITTO"
+            "NEW": "NUOVA GUERRA RILEVATA",
+            "REACTIVATED": "GUERRA RIATTIVATA (Dati LIVE)",
+            "SCORE_CHANGE": "AGGIORNAMENTO PUNTEGGIO"
         }
-        if event_type == "STARTUP_LOAD": color = discord.Color.blue()
-        elif event_type == "SCORE_CHANGE": color = discord.Color.orange()
+        if event_type == "SCORE_CHANGE": color = discord.Color.orange()
         else: color = discord.Color.red()
 
         embed = discord.Embed(
@@ -189,7 +150,7 @@ class FactionBot(commands.Bot):
         embed.add_field(
             name=conflict['faction_1'], 
             value=f"Giorni vinti: {conflict['f1_days_won']}",
-            inline=True
+            inline=False
         )
         embed.add_field(
             name="Assetto in perdita:",
@@ -199,7 +160,7 @@ class FactionBot(commands.Bot):
         embed.add_field(
             name=conflict['faction_2'], 
             value=f"Giorni vinti: {conflict['f2_days_won']}",
-            inline=True
+            inline=False
         )
         embed.add_field(
             name="Assetto in perdita:",
@@ -209,18 +170,87 @@ class FactionBot(commands.Bot):
         embed.add_field(
             name="Timestamp Messaggio da EDDN",
             value=f"{conflict['timestamp']}",
-            inline=True
+            inline=False
         )
         embed.add_field(
             name="Fonte Messaggio",
             value=f"{conflict['source']}",
             inline=False
         )
+        await channel.send(embed=embed)
+        print("Discord alert sent")
 
-        await channel.send(embed=embed)# Avvio
+    async def send_conflicts_status(self):
+        channel = self.get_channel(DISCORD_CHANNEL_ID)
+        if not channel:
+            print(f"Error in send_conflicts_status: Channel {DISCORD_CHANNEL_ID} not found.")
+            return
 
+        conflicts = get_active_conflicts(self.db_conn)
 
+        if not conflicts:
+            print("[DB] empty 'conflicts' table.")
+            return
 
+        for c in conflicts:
+            # Converting sqlite3.Row object as dict
+            conflict_data = {
+                'system': c['system_name'],
+                'war_type': c['war_type'],
+                'status': c['status'],
+                'faction_1': c['faction_1'],
+                'stake1': c['stake1'],
+                'f1_days_won': c['f1_days_won'],
+                'faction_2': c['faction_2'],
+                'f2_days_won': c['f2_days_won'],
+                'stake2': c['stake2'],
+                'last_updated': c['last_updated'],
+                'timestamp': c['timestamp'],
+                'source': c['source'],
+                'is_active': c['is_active']
+            }
+            if conflict_data['is_active']:
+                embed = discord.Embed(
+                    title=f"CONFLITTO IN DATABASE ATTIVO", 
+                    color=discord.Color.blue()
+                )
+                embed.add_field(
+                    name="Tipo e Stato", 
+                    value=f"{conflict_data['war_type'].capitalize()} ({conflict_data['status']})", 
+                    inline=False
+                )
+                embed.add_field(
+                    name=conflict_data['faction_1'], 
+                    value=f"Giorni vinti: {conflict_data['f1_days_won']}",
+                    inline=False
+                )
+                embed.add_field(
+                    name="Assetto in perdita:",
+                    value=f"{conflict_data['stake1']}",
+                    inline=False
+                    )
+                embed.add_field(
+                    name=conflict_data['faction_2'], 
+                    value=f"Giorni vinti: {conflict_data['f2_days_won']}",
+                    inline=False
+                )
+                embed.add_field(
+                    name="Assetto in perdita:",
+                    value=f"{conflict_data['stake2']}",
+                    inline=False
+                )
+                embed.add_field(
+                    name="Timestamp Messaggio da EDDN",
+                    value=f"{conflict_data['timestamp']}",
+                    inline=False
+                )
+                embed.add_field(
+                    name="Fonte Messaggio",
+                    value=f"{conflict_data['source']}",
+                    inline=False
+                )
+                await channel.send(embed=embed)
+        print("Conflicts status sent")
 
 if __name__ == "__main__":
     if not DISCORD_TOKEN:

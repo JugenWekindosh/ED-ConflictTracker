@@ -1,13 +1,8 @@
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 
 def get_connection(db_path='data/conflicts.db'):
-    # Timeout to prevent both bot.py and import_dump.py
-    # to access simultanously to the database.
-    TIMEOUT = 60.0 
-
-    conn = sqlite3.connect(db_path, timeout=TIMEOUT)
-
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row # Acces table's rows as dictionaries
     return conn
 
@@ -79,13 +74,13 @@ def print_all_conflicts(conn):
         print(f"--- Totale record: {len(rows)} ---\n")
 
     except Exception as e:
-        print(f"Error while printing database on console: {e}")
+        print(f"Error in print_all_conflicts while printing database on console: {e}")
 
 def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f1_days, f2_days, stake1, stake2, timestamp, source):
     cursor = conn.cursor()
     now = datetime.now().isoformat()
 
-    # Sorts factions alphabetically to avoid duplicates
+    # Sorts factions alphabetically 
     f_a, f_b = sorted([faction_1, faction_2])
     
     # exchange scores if sorted alphabetically
@@ -133,3 +128,20 @@ def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f
     
     return "NO_CHANGE"
 
+def cleanup_old_conflicts(conn, days=7):
+    cursor = conn.cursor()
+    threshold_date = datetime.now() - timedelta(days=days)
+    threshold_str = threshold_date.strftime('%Y-%m-%d %H:%M:%S')
+
+    try:
+        cursor.execute('''
+            DELETE FROM conflicts WHERE last_updated < ?
+        ''', (threshold_str,))
+        deleted_rows = cursor.rowcount
+        conn.commit()
+        if deleted_rows > 0:
+            print(f"[DB] Pulizia completata: rimossi {deleted_rows} conflitti obsoleti")
+        return deleted_rows
+    except Exception as e:
+        print(f"[DB] Errore durante la pulizia dei vecchi conflitti: {e}")
+        return 0

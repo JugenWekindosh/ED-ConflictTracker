@@ -16,7 +16,7 @@ from core import extract_relevant_conflicts
 
 # ---- CONFIGS ----
 # Factions target
-TARGET_FACTIONS = ["MCC 445 Services", "Galileo Corporation"]
+TARGET_FACTIONS = ["MCC 445 Services", "Galileo Corporation", "Expanders Corp"]
 
 # Directory Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -54,11 +54,11 @@ def download_latest_dumps():
         response.raise_for_status()
     except requests.exceptions.Timeout: 
         print("Error: Connection expired (Timeout)")
-        return False
+        return None
     except Exception as e:
         print(f"Connection error to {target_url}: {e}")
         print("Current month archive maybe it's not avaiable yet.")
-        return False
+        return None
     
     soup = BeautifulSoup(response.text, 'html.parser')
     links = soup.find_all('a')
@@ -79,7 +79,7 @@ def download_latest_dumps():
             
     if not location_files:
         print(f"No .bz2 Journal files found in {target_url}")
-        return False
+        return None
         
     # Sort by most recent
     location_files.sort(reverse=True)
@@ -132,11 +132,11 @@ def download_latest_dump():
         response.raise_for_status()
     except requests.exceptions.Timeout: 
         print("Error: Connection expired (Timeout)")
-        return False
+        return None
     except Exception as e:
         print(f"Connection error to {EDDN_ARCHIVE_URL}: {e}")
         print("Current .jsonl maybe it's not avaiable yet.")
-        return False
+        return None
     
     soup = BeautifulSoup(response.text, 'html.parser')
     links = soup.find_all('a')
@@ -157,7 +157,7 @@ def download_latest_dump():
             
     if not location_files:
         print(f"No Journal .jsonl files found in {EDDN_ARCHIVE_URL}")
-        return False
+        return None
         
     # Sort by most recent
     location_files.sort(reverse=True)
@@ -221,8 +221,8 @@ def elaborate_data(conn):
                             for c in conflicts:
                                 upsert_conflict(
                                     conn, c['system'], c['faction_1'], c['faction_2'],
-                                    c['war_type'], c['status'], c['f1_days'], 
-                                    c['f2_days'], c['stake1'], c['stake2'], 
+                                    c['war_type'], c['status'], c['f1_days_won'], 
+                                    c['f2_days_won'], c['stake1'], c['stake2'], 
                                     c['timestamp'], "DUMP"
                                     )
                                 conflicts_inserted += 1
@@ -249,8 +249,8 @@ def elaborate_data(conn):
                             for c in conflicts:
                                 upsert_conflict(
                                     conn, c['system'], c['faction_1'], c['faction_2'],
-                                    c['war_type'], c['status'], c['f1_days'],
-                                    c['f2_days'], c['stake1'], c['stake2'],
+                                    c['war_type'], c['status'], c['f1_days_won'],
+                                    c['f2_days_won'], c['stake1'], c['stake2'],
                                     c['timestamp'], "DUMP"
                                     )
                                 conflicts_inserted += 1

@@ -25,10 +25,14 @@ def extract_relevant_conflicts(message_data, target_factions):
                 'status': c.get('Status', 'unknown'),
                 'f1_days_won': c['Faction1'].get('WonDays', 0),
                 'f2_days_won': c['Faction2'].get('WonDays', 0),
-                'stake1': c['Faction1'].get('Stake', ''),
-                'stake2': c['Faction2'].get('Stake', ''),
+                'stake1': c['Faction1'].get('Stake', 'None'),
+                'stake2': c['Faction2'].get('Stake', 'None'),
                 'timestamp': time_stamp
             })
+            if c['Status'].lower() in ['active', 'pending']:
+                relevant_conflicts.append({'is_active': 1})
+            else:
+                relevant_conflicts.append({'is_active': 0})
             
     return relevant_conflicts
 
