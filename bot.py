@@ -14,6 +14,7 @@ from core import extract_relevant_conflicts
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_PATH = os.path.join(BASE_DIR, '.env')
+ICONS_PATH = os.path.join(BASE_DIR, 'icons')
 load_dotenv(ENV_PATH)
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -127,10 +128,10 @@ class FactionBot(discord.Client):
         """Crea un embed coerente per ogni tipo di aggiornamento"""
         
         status_map = {
-            "NEW": ("NUOVA GUERRA RILEVATA", discord.Color.red()),
-            "REACTIVATED": ("GUERRA RIATTIVATA (Dati LIVE)", discord.Color.red()),
-            "SCORE_CHANGE": ("AGGIORNAMENTO PUNTEGGIO", discord.Color.orange()),
-            "DATABASE": ("STATO CONFLITTO (Database)", discord.Color.blue())
+            "NEW": (":red_circle: NUOVA GUERRA RILEVATA", discord.Color.red()),
+            "REACTIVATED": (":red_circle: GUERRA RIATTIVATA (Dati LIVE)", discord.Color.red()),
+            "SCORE_CHANGE": (":orange_circle: AGGIORNAMENTO PUNTEGGIO", discord.Color.orange()),
+            "DATABASE": (":blue_circle: STATO CONFLITTO (Database)", discord.Color.blue())
         }
 
         title, color = status_map.get(event_type, status_map["DATABASE"])
@@ -140,6 +141,17 @@ class FactionBot(discord.Client):
             color=color,
             timestamp=datetime.now()
         )
+
+        if conflict['war_type'] in ['war', 'civilwar']:
+            img_path = os.path.join(ICONS_PATH, 'war_civilwar_logo.png')
+            icon_file = discord.File(img_path, filename="image.png")
+            embed.set_thumbnail(url="attachment://image.png")
+        elif conflict['war_type'] in ['election']:
+            img_path = os.path.join(ICONS_PATH, 'election_logo.png')
+            icon_file = discord.File(img_path, filename="image.png")
+            embed.set_thumbnail(url="attachment://image.png")
+        else:
+            file = None
         
         formatted_date = self._format_timestamp(conflict['timestamp'])
 
@@ -149,12 +161,12 @@ class FactionBot(discord.Client):
             inline=False
         )
         embed.add_field(
-            name=f"{conflict['faction_1']}", 
+            name=f":triangular_flag_on_post:{conflict['faction_1']}", 
             value=f"Giorni vinti: **{conflict['f1_days_won']}**\nAssetto: *{conflict.get('stake1', '----')}*",
             inline=True
         )
         embed.add_field(
-            name=f"{conflict['faction_2']}", 
+            name=f":flag_black:{conflict['faction_2']}", 
             value=f"Giorni vinti: **{conflict['f2_days_won']}**\nAssetto: *{conflict.get('stake2', '----')}*",
             inline=True
         )
@@ -165,7 +177,7 @@ class FactionBot(discord.Client):
         embed.add_field(name="Fonte", value=conflict.get('source', 'LIVE'), inline=True)
         
         embed.set_footer(text="Elite Dangerous Data Network | NovaCorp BGS Bot")
-        return embed
+        return embed, icon_file
 
 
 # ---- ASYNC FUNCTIONS
@@ -175,8 +187,8 @@ class FactionBot(discord.Client):
         if not channel:
             print(f"Error in send_discord_alert: Channel {DISCORD_CHANNEL_ID} not found.")
             return
-        embed = self._create_conflict_embed(conflict, event_type)
-        await channel.send(embed=embed)
+        embed, icon_file = self._create_conflict_embed(conflict, event_type)
+        await channel.send(embed=embed, file=icon_file)
         print("Discord alert sent")
 
 
@@ -210,8 +222,8 @@ class FactionBot(discord.Client):
                 'is_active': c['is_active']
             }
             if conflict_data['is_active']:
-                embed = self._create_conflict_embed(conflict_data, "DATABASE")
-                await channel.send(embed=embed)
+                embed, icon_file = self._create_conflict_embed(conflict_data, "DATABASE")
+                await channel.send(embed=embed, file=icon_file)
         print("Conflicts status sent")
 
 
