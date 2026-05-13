@@ -93,7 +93,7 @@ def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f
     clean_status = status.strip() if status else ""
     if clean_status == "":
         clean_status = "ended"
-    is_active = 1 if clean_status.lower() in ['active', 'pending'] else 0
+    is_active = 1 if clean_status.lower() in ['active'] else 0
 
     cursor.execute('''
         SELECT f1_days_won, f2_days_won, is_active FROM conflicts 
@@ -138,13 +138,17 @@ def cleanup_old_conflicts(conn, days=7):
 
     try:
         cursor.execute('''
-            DELETE FROM conflicts WHERE last_updated < ?
+            DELETE FROM conflicts WHERE last_updated < ? AND is_active = 1
         ''', (threshold_date,))
-        deleted_rows = cursor.rowcount
-        conn.commit()
-        if deleted_rows > 0:
-            print(f"[DB] Pulizia completata: rimossi {deleted_rows} conflitti obsoleti")
-        return deleted_rows
+
+        deleted_systems = [row['system_name'] for row in cursor.fetchall()]
+        if deleted_systems:
+            cursor.execute('''
+                DELETE FROM conflicts WHERE last_updated < ? AND is_active = 1
+            ''', (threshold_date,))
+            conn.commit()
+            print(f"[DB] Pulizia completata: rimossi {len(deleted_systems)} conflitti obsoleti ({', '.join(deleted_systems)})")
+        return deleted_systems
     except Exception as e:
         print(f"[DB] Errore durante la pulizia dei vecchi conflitti: {e}")
-        return 0
+        return [] 

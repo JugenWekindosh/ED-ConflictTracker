@@ -16,7 +16,7 @@ from core import extract_relevant_conflicts
 
 # ---- CONFIGS ----
 # Factions target
-TARGET_FACTIONS = ["MCC 445 Services", "Galileo Corporation", "Expanders Corp"]
+TARGET_FACTIONS = ["MCC 445 Services", "Expanders Corp"]
 
 # Directory Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -201,15 +201,20 @@ def download_jsonl_dumps():
 
 def elaborate_data(conn):
     print("Importing into the database...")
-    conflicts_inserted = 0
+
+    # Dictionary only to keep most recent event
+    # Keys: (system_name, fazione_A, fazione_B)
+    latest_conflicts = {}
 
     for elem in os.scandir(DATA_DIR):
-        # Elaborate .bz2 files
-        if elem.is_file() and 'Journal' in elem.name and elem.name.endswith('.bz2'):
+        # Elaborate .bz2 and .jsonl files in one block
+        if elem.is_file() and 'Journal' in elem.name and (elem.name.endswith('.bz2') or elem.name.endswith('.jsonl')):
             print(f"Elaborating file: {elem.name}...")
             lines_read = 0
             
-            with bz2.open(elem.path, 'rt', encoding='utf-8') as f:
+            opener = bz2.open if elem.name.endswith('.bz2') else open
+
+            with opener(elem.path, 'rt', encoding='utf-8') as f:
                 for line in f:
                     lines_read += 1
                     try:
@@ -219,46 +224,34 @@ def elaborate_data(conn):
                             conflicts = extract_relevant_conflicts(data, TARGET_FACTIONS)
                             
                             for c in conflicts:
-                                upsert_conflict(
-                                    conn, c['system'], c['faction_1'], c['faction_2'],
-                                    c['war_type'], c['status'], c['f1_days_won'], 
-                                    c['f2_days_won'], c['stake1'], c['stake2'], 
-                                    c['timestamp'], "DUMP"
-                                    )
-                                conflicts_inserted += 1
-                    except (json.JSONDecodeError, KeyError):
-                        continue
-                        
-                    if lines_read % 100000 == 0:
-                        print(f" -> {lines_read} rows have been read from {elem.name}...")
-
-        if elem.is_file() and 'Journal' in elem.name and elem.name.endswith('.jsonl'):
-            # Elaborate .jsonl files
-            print(f"Elaborating file: {elem.name}...")
-            lines_read = 0
-
-            with open(elem.path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    lines_read += 1
-                    try:
-                        data = json.loads(line)
-
-                        if data.get('$schemaRef') == "https://eddn.edcd.io/schemas/journal/1":
-                            conflicts = extract_relevant_conflicts(data, TARGET_FACTIONS)
-
-                            for c in conflicts:
-                                upsert_conflict(
-                                    conn, c['system'], c['faction_1'], c['faction_2'],
-                                    c['war_type'], c['status'], c['f1_days_won'],
-                                    c['f2_days_won'], c['stake1'], c['stake2'],
-                                    c['timestamp'], "DUMP"
-                                    )
-                                conflicts_inserted += 1
+                                # Sort factions in order to get an unic key
+                                f_a, f_b = sorted([c['faction_1'], c['faction_2']])
+                                key = (c['system'], f_a, f_b)
+                                
+                                # Messages from EDDN have timestamp ISO 8601 (e.g. 2024-05-14T12:00:00Z)
+                                # compare them as string
+                                # If key does not exit or current timestamp is greater than saved timestamp -> update
+                                if key not in latest_conflicts or c['timestamp'] > latest_conflicts[key]['timestamp']:
+                                    latest_conflicts[key] = c
                     except (json.JSONDecodeError, KeyError):
                         continue
 
                     if lines_read % 100000 == 0:
                         print(f" -> {lines_read} rows have been read from {elem.name}...")
+
+    print("Saving most recent conflicts in database...DONE")
+    conflicts_inserted = 0
+
+    # Now we query DB with only most recent conflicts
+    for c in latest_conflicts.values():
+        upsert_conflict(
+            conn, c['system'], c['faction_1'], c['faction_2'],
+            c['war_type'], c['status'], c['f1_days_won'], 
+            c['f2_days_won'], c['stake1'], c['stake2'], 
+            c['timestamp'], "DUMP"
+            )
+        conflicts_inserted += 1
+                
     print(f"FINISHED! total conflicts imported/updated: {conflicts_inserted}")
 
 def clean_old_dumps(all_valid_files):
@@ -276,7 +269,7 @@ def clean_old_dumps(all_valid_files):
 
 def delete_dumps(all_valid_files):
     for file_name in all_valid_files:
-    dump_file_path = os.path.join(DATA_DIR, file_name)
+        dump_file_path = os.path.join(DATA_DIR, file_name)
         if os.path.exists(dump_file_path):
             try:
                 os.remove(dump_file_path)

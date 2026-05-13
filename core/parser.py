@@ -17,7 +17,7 @@ def extract_relevant_conflicts(message_data, target_factions):
         f2_name = c['Faction2']['Name']
         
         if f1_name in target_factions or f2_name in target_factions:
-            if c.get('Status', '').lower() in ['active', 'pending']:
+            if c.get('Status', '').lower() in ['active']:
                 is_active_val = 1
             else:
                 is_active_val = 0
@@ -35,6 +35,7 @@ def extract_relevant_conflicts(message_data, target_factions):
                 'stake1': c['Faction1'].get('Stake', '----'),
                 'stake2': c['Faction2'].get('Stake', '----'),
                 'timestamp': time_stamp,
+                'is_active': is_active_val,
                 'source': 'LIVE'
             })
             

@@ -25,7 +25,7 @@ if not DISCORD_TOKEN or not CHANNEL_ID_RAW:
 DISCORD_CHANNEL_ID = int(CHANNEL_ID_RAW)
 
 # ---- CONFIGURATIONS ----
-TARGET_FACTIONS = ["MCC 445 Services", "Galileo Corporation", "Expanders Corp"]
+TARGET_FACTIONS = ["MCC 445 Services", "Expanders Corp"]
 relayEDDN = "tcp://eddn.edcd.io:9500"
 timeoutEDDN = 600000
 
@@ -89,6 +89,7 @@ class FactionBot(discord.Client):
                         )
                         
                         if result in ["NEW", "REACTIVATED", "SCORE_CHANGE"]:
+                            await self.delete_previous_messages(c['system'])
                             await self.send_discord_alert(c, result)
             except zmq.error.Again:
                 print("Timeout ZMQ, continuing to listen...")
@@ -102,7 +103,13 @@ class FactionBot(discord.Client):
     # Daily cleanup
     @tasks.loop(hours=24)
     async def daily_cleanup(self):
-        cleanup_old_conflicts(self.db_conn, days=7)
+        try:
+            deleted_systems = cleanup_old_conflicts(self.db_conn, days=7)
+            if deleted_systems:
+                for system in deleted_systems:
+                    await self.delete_previous_system_messages(system)
+        except Exception as e:
+            print(f"Unexcpected error in Daily cleanup: {e}")
 
 
 
@@ -187,9 +194,12 @@ class FactionBot(discord.Client):
         if not channel:
             print(f"Error in send_discord_alert: Channel {DISCORD_CHANNEL_ID} not found.")
             return
-        embed, icon_file = self._create_conflict_embed(conflict, event_type)
-        await channel.send(embed=embed, file=icon_file)
-        print("Discord alert sent")
+        try:
+            embed, icon_file = self._create_conflict_embed(conflict, event_type)
+            await channel.send(embed=embed, file=icon_file)
+            print("Discord alert sent")
+        except Exception as e:
+            print(f"Errore durante l'invio dell'alert discord: {e}")
 
 
 
@@ -204,27 +214,30 @@ class FactionBot(discord.Client):
         if not conflicts:
             print("[DB] Tabella conflitti vuota.")
             return
-
-        for c in conflicts:
-            # Mappatura chiavi DB -> Formato atteso dall'embed builder
-            conflict_data = {
-                'system': c['system_name'],
-                'war_type': c['war_type'],
-                'status': c['status'],
-                'faction_1': c['faction_1'],
-                'stake1': c['stake1'],
-                'f1_days_won': c['f1_days_won'],
-                'faction_2': c['faction_2'],
-                'f2_days_won': c['f2_days_won'],
-                'stake2': c['stake2'],
-                'timestamp': c['timestamp'],
-                'source': c['source'],
-                'is_active': c['is_active']
-            }
-            if conflict_data['is_active']:
-                embed, icon_file = self._create_conflict_embed(conflict_data, "DATABASE")
-                await channel.send(embed=embed, file=icon_file)
-        print("Conflicts status sent")
+        
+        try:
+            for c in conflicts:
+                # Mappatura chiavi DB -> Formato atteso dall'embed builder
+                conflict_data = {
+                    'system': c['system_name'],
+                    'war_type': c['war_type'],
+                    'status': c['status'],
+                    'faction_1': c['faction_1'],
+                    'stake1': c['stake1'],
+                    'f1_days_won': c['f1_days_won'],
+                    'faction_2': c['faction_2'],
+                    'f2_days_won': c['f2_days_won'],
+                    'stake2': c['stake2'],
+                    'timestamp': c['timestamp'],
+                    'source': c['source'],
+                    'is_active': c['is_active']
+                }
+                if conflict_data['is_active']:
+                    embed, icon_file = self._create_conflict_embed(conflict_data, "DATABASE")
+                    await channel.send(embed=embed, file=icon_file)
+            print("Conflicts status sent")
+        except Exception as e:
+            print(f"Errore durante l'invio dello status dei conflitti: {e}")
 
 
 
@@ -232,7 +245,7 @@ class FactionBot(discord.Client):
         """Pulisce il canale e stampa il DB sulla console"""
         channel = self.get_channel(DISCORD_CHANNEL_ID)
         if not channel:
-            print(f"Error: Channel {DISCORD_CHANNEL_ID} not found.")
+            print(f"Error in refresh_status_channel: Channel {DISCORD_CHANNEL_ID} not found.")
             return
 
         print("Pulizia canale...")
@@ -245,6 +258,24 @@ class FactionBot(discord.Client):
 
         print_all_conflicts(self.db_conn)
 
+    async def delete_previous_system_messages(self, system_name):
+        """Cerca e cancella i messaggi precedenti relativi a un sistema specifico nel canale"""
+        channel = self.get_channel(DISCORD_CHANNEL_ID)
+        if not channel:
+            print(f"Error in delete_previous_system_messages: Channel {DISCORD_CHANNEL_ID} not found.")
+            return
+
+        try:
+            async for message in channel.history(limit=100):
+                # Assicuriamoci che il messaggio sia del bot e contenga un embed
+                if message.author == self.user and message.embeds:
+                    embed = message.embeds[0]
+                    # I titoli sono generati come f"{title} a {conflict['system']}"
+                    # Verifichiamo se il titolo termina con il nome del sistema
+                    if embed.title and embed.title.endswith(f" a {system_name}"):
+                        await message.delete()
+        except Exception as e:
+            print(f"Errore durante la cancellazione del vecchio messaggio per {system_name}: {e}")
 
 
 
