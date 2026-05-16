@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from core import get_connection, setup_db, upsert_conflict, get_active_conflicts, print_all_conflicts, cleanup_old_conflicts
+from core import get_connection, setup_db, upsert_conflict, get_active_conflicts, cleanup_old_conflicts
 from core import extract_relevant_conflicts
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -44,7 +44,6 @@ class FactionBot(discord.Client):
     async def on_ready(self):
         print(f'Bot online as {self.user}')
         if self.first_run:
-            cleanup_old_conflicts(self.db_conn, days=7)
             await self.refresh_status_channel()
             await self.send_conflicts_status()
             self.first_run = False
@@ -89,7 +88,7 @@ class FactionBot(discord.Client):
                         )
                         
                         if result in ["NEW", "REACTIVATED", "SCORE_CHANGE"]:
-                            await self.delete_previous_messages(c['system'])
+                            await self.delete_previous_system_messages(c['system'])
                             await self.send_discord_alert(c, result)
             except zmq.error.Again:
                 print("Timeout ZMQ, continuing to listen...")
@@ -101,7 +100,7 @@ class FactionBot(discord.Client):
                 print(f"Unexpected error in EDDN listener: {e}")
 
     # Daily cleanup
-    @tasks.loop(hours=24)
+    @tasks.loop(hours=12)
     async def daily_cleanup(self):
         try:
             deleted_systems = cleanup_old_conflicts(self.db_conn, days=7)
@@ -204,7 +203,7 @@ class FactionBot(discord.Client):
 
 
     async def send_conflicts_status(self):
-        """Invia lo stato attuale dal database"""
+        """Invia lo stato attuale dal database sul canale testuale"""
         channel = self.get_channel(DISCORD_CHANNEL_ID)
         if not channel:
             print(f"Error in send_conflicts_status: Channel {DISCORD_CHANNEL_ID} not found.")
@@ -237,12 +236,12 @@ class FactionBot(discord.Client):
                     await channel.send(embed=embed, file=icon_file)
             print("Conflicts status sent")
         except Exception as e:
-            print(f"Errore durante l'invio dello status dei conflitti: {e}")
+            print(f"Errore in send_conflicts_status durante l'invio dello status dei conflitti: {e}")
 
 
 
     async def refresh_status_channel(self):
-        """Pulisce il canale e stampa il DB sulla console"""
+        """Pulisce il canale"""
         channel = self.get_channel(DISCORD_CHANNEL_ID)
         if not channel:
             print(f"Error in refresh_status_channel: Channel {DISCORD_CHANNEL_ID} not found.")
@@ -252,11 +251,11 @@ class FactionBot(discord.Client):
 
         try:
             await channel.purge(limit=100) # Rimuove fino a 100 messaggi recenti
-            print("Pulizia canale completata!")
+            print("Completata!")
         except Exception as e:
-            print(f"Errore durante la pulizia del canale: {e}")
+            print(f"Errore in refresh_status_channel durante la pulizia del canale: {e}")
 
-        print_all_conflicts(self.db_conn)
+
 
     async def delete_previous_system_messages(self, system_name):
         """Cerca e cancella i messaggi precedenti relativi a un sistema specifico nel canale"""
@@ -275,7 +274,7 @@ class FactionBot(discord.Client):
                     if embed.title and embed.title.endswith(f" a {system_name}"):
                         await message.delete()
         except Exception as e:
-            print(f"Errore durante la cancellazione del vecchio messaggio per {system_name}: {e}")
+            print(f"Errore in delete_previous_messages durante la cancellazione del vecchio messaggio per {system_name}: {e}")
 
 
 

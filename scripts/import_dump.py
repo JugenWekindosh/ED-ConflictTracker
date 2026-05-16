@@ -38,35 +38,51 @@ except OSError as e:
 
 
 # ---- FUNCTIONS ----
-def download_bz2_dumps():
+def download_dumps():
     """
     Find and download Journal.Location, Journal.FSDJump, Journal.CarrierJump
-    .bz2 files of the current month inside the archive
+    .bz2 and .jsonl files of the current month inside the archive
     """
 
     # Build URL based on datetime.now()
     current_ym = datetime.now().strftime("%Y-%m")
-    target_url = urljoin(EDDN_ARCHIVE_URL, f"{current_ym}/")
+    target_url_bz2 = urljoin(EDDN_ARCHIVE_URL, f"{current_ym}/")
+    target_url_jsonl = EDDN_ARCHIVE_URL 
     
     try:
-        print(f"Connecting to {target_url}...")
-        response = requests.get(target_url, timeout=TIMEOUT)
-        response.raise_for_status()
+        print(f"Connecting to {target_url_bz2}...")
+        response_bz2 = requests.get(target_url_bz2, timeout=TIMEOUT)
+        response_bz2.raise_for_status()
     except requests.exceptions.Timeout: 
         print("Error: Connection expired (Timeout)")
         return None
     except Exception as e:
-        print(f"Connection error to {target_url}: {e}")
+        print(f"Connection error to {target_url_bz2}: {e}")
         print("Current month archive maybe it's not avaiable yet.")
         return None
+
+    try:
+        print(f"Connecting to {target_url_jsonl}...")
+        response_jsonl = requests.get(EDDN_ARCHIVE_URL, timeout=TIMEOUT)
+        response_jsonl.raise_for_status()
+    except requests.exceptions.Timeout: 
+        print("Error: Connection expired (Timeout)")
+        return None
+    except Exception as e:
+        print(f"Connection error to {target_url_jsonl}: {e}")
+        print("Current .jsonl maybe it's not avaiable yet.")
+        return None
     
-    soup = BeautifulSoup(response.text, 'html.parser')
-    links = soup.find_all('a')
+    soup_bz2 = BeautifulSoup(response_bz2.text, 'html.parser')
+    links_bz2 = soup_bz2.find_all('a')
+
+    soup_jsonl = BeautifulSoup(response_jsonl.text, 'html.parser')
+    links_jsonl = soup_jsonl.find_all('a')
     
-    # Filter for Journal.Location, Journal.FSDJump, Journal.CarrierJump 
-    # and extension .bz2 (exclunding test)
-    location_files = [
-        link.get('href') for link in links 
+
+    # Filter for Journal.Location, Journal.FSDJump, Journal.CarrierJump (exclunding test)
+    location_files_bz2 = [
+        link.get('href') for link in links_bz2 
         if link.get('href') 
         and(
             'Journal.Location' in link.get('href') 
@@ -76,75 +92,9 @@ def download_bz2_dumps():
         and link.get('href').endswith('.bz2')
         and 'Test' not in link.get('href')
     ]
-            
-    if not location_files:
-        print(f"No .bz2 Journal files found in {target_url}")
-        return None
-        
-    # Sort by most recent
-    location_files.sort(reverse=True)
-    print(f"Found {len(location_files)} files to download.") 
 
-    for file_name in location_files:
-        download_url = urljoin(target_url, file_name)
-        dump_file_path = os.path.join(DATA_DIR, file_name)
-        
-        # Skip download if local file has same size of remote file or already
-        # i.e. same file already presenti in /data folder 
-        head_resp = requests.head(download_url)
-        remote_size = int(head_resp.headers.get('content-length', 0))
-
-        if os.path.exists(dump_file_path):
-            local_size = os.path.getsize(dump_file_path)
-            if local_size == remote_size:
-                print(f"File already present: skipping download -> {file_name}")
-                continue
-            else:
-                print(f"Update found for {file_name} (local: {local_size}B -> remote: {remote_size}B)")
-        else:
-            print(f"Downloading: {file_name}...")
-
-        with requests.get(download_url, stream=True) as r:
-            r.raise_for_status()
-            total_size = int(r.headers.get('content-length', 0))
-            
-            with open(dump_file_path, 'wb') as f, tqdm(
-                desc=file_name,
-                total=total_size,
-                unit='iB',
-                unit_scale=True,
-                unit_divisor=1024,
-            ) as bar:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-                    bar.update(len(chunk))
-    return location_files
-
-def download_jsonl_dumps():
-    """
-    Find and download Journal.Location, Journal.FSDJump, Journal.CarrierJump
-    .jsonl files in the base archive
-    """
-
-    try:
-        print(f"Connecting to {EDDN_ARCHIVE_URL}...")
-        response = requests.get(EDDN_ARCHIVE_URL, timeout=TIMEOUT)
-        response.raise_for_status()
-    except requests.exceptions.Timeout: 
-        print("Error: Connection expired (Timeout)")
-        return None
-    except Exception as e:
-        print(f"Connection error to {EDDN_ARCHIVE_URL}: {e}")
-        print("Current .jsonl maybe it's not avaiable yet.")
-        return None
-    
-    soup = BeautifulSoup(response.text, 'html.parser')
-    links = soup.find_all('a')
-    
-    # Filter for Journal.Location, Journal.CarrierJump, Journal.FSDJump
-    # and extension .jsonl (exclunding test)
-    location_files = [
-        link.get('href') for link in links 
+    location_files_jsonl = [
+        link.get('href') for link in links_jsonl
         if link.get('href') 
         and(
             'Journal.Location' in link.get('href') 
@@ -154,21 +104,30 @@ def download_jsonl_dumps():
         and link.get('href').endswith('.jsonl')
         and 'Test' not in link.get('href')
     ]
-            
-    if not location_files:
-        print(f"No Journal .jsonl files found in {EDDN_ARCHIVE_URL}")
+
+    if not location_files_bz2:
+        print(f"No .bz2 Journal files found in {target_url_bz2}")
+        return None
+
+    if not location_files_jsonl:
+        print(f"No .jsonl Journal files found in {target_url_jsonl}")
         return None
         
+    location_files = location_files_bz2 + location_files_jsonl
+    
     # Sort by most recent
     location_files.sort(reverse=True)
     print(f"Found {len(location_files)} files to download.") 
 
     for file_name in location_files:
-        download_url = urljoin(EDDN_ARCHIVE_URL, file_name)
         dump_file_path = os.path.join(DATA_DIR, file_name)
-        
+        if file_name.endswith('.bz2'):
+            download_url = urljoin(target_url_bz2, file_name)
+        elif file_name.endswith('.jsonl'):
+            download_url = urljoin(target_url_jsonl, file_name)
+    
         # Skip download if local file has same size of remote file or already
-        # i.e. same file already presenti in /data folder 
+        # i.e. same file already present in /data folder 
         head_resp = requests.head(download_url)
         remote_size = int(head_resp.headers.get('content-length', 0))
 
@@ -197,7 +156,6 @@ def download_jsonl_dumps():
                     f.write(chunk)
                     bar.update(len(chunk))
     return location_files
-
 
 def elaborate_data(conn):
     print("Importing into the database...")
@@ -279,29 +237,23 @@ def delete_dumps(all_valid_files):
     print("Directory /data cleaned!")
 
 def process_dumps():
-    valid_bz2_files = download_bz2_dumps()
-    valid_jsonl_files = download_jsonl_dumps()
+    valid_files = download_dumps()
     
-    if valid_bz2_files is None and valid_jsonl_files is None:
+    if valid_files is None:
         print("Downloading failed. Import aborted.")
         return
 
     # Substitute None with empty lists to avoid errors
-    valid_bz2_files = valid_bz2_files or []
-    valid_jsonl_files = valid_jsonl_files or []
+    valid_files = valid_files or []
 
-    all_valid_files = valid_bz2_files + valid_jsonl_files
-    clean_old_dumps(all_valid_files)    
+    clean_old_dumps(valid_files)    
 
     conn = get_connection(DB_PATH)
     setup_db(conn)
     elaborate_data(conn)
     conn.close()
 
-    delete_dumps(all_valid_files)
+    delete_dumps(valid_files)
 
 if __name__ == "__main__":
     process_dumps()
-
-# ___TODO:  After importing all data from dumps into database
-#           delete downloaded dumps from data

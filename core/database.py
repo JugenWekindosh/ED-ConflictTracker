@@ -1,5 +1,5 @@
 import sqlite3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 def get_connection(db_path='data/conflicts.db'):
@@ -75,7 +75,54 @@ def print_all_conflicts(conn):
         print(f"--- Totale record: {len(rows)} ---\n")
 
     except Exception as e:
-        print(f"Error in print_all_conflicts while printing database on console: {e}")
+        print(f"[DB] Error in print_all_conflicts while printing database on console: {e}")
+
+
+def print_active_conflicts(conn):
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT
+                system_name AS Sistema,
+                faction_1 AS Fazione_1,
+                faction_2 AS Fazione_2,
+                status AS Stato,
+                is_active AS Attivo,
+                timestamp AS Message_Timestamp,
+                source AS Source
+            FROM conflicts
+            WHERE is_active = 1
+            ORDER BY is_active DESC, last_updated DESC
+        """)
+        rows = cursor.fetchall()
+
+        if not rows:
+            print("\n[DB] 'conflicts' table empty!")
+            return
+
+        # Intestazioni delle colonne
+        headers = [description[0] for description in cursor.description]
+        
+        print("\n--- CONTENUTO SINTETICO DATABASE CONFLITTI ATTIVI---")
+        
+        # Tentativo di usare tabulate per una grafica migliore
+        try:
+            from tabulate import tabulate
+            print(tabulate(rows, headers=headers, tablefmt="grid"))
+        except ImportError:
+            # Formattazione manuale semplice se tabulate non è installato
+            header_line = " | ".join(headers)
+            print(header_line)
+            print("-" * len(header_line))
+            for row in rows:
+                print(" | ".join(str(item) for item in row))
+        
+        print(f"--- Totale record: {len(rows)} ---\n")
+
+    except Exception as e:
+        print(f"[DB] Error in print_active_conflicts while printing database on console: {e}")
+
+
 
 def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f1_days, f2_days, stake1, stake2, timestamp, source):
     cursor = conn.cursor()
@@ -133,21 +180,21 @@ def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f
 
 def cleanup_old_conflicts(conn, days=7):
     cursor = conn.cursor()
-    tz = ZoneInfo("Europe/Rome")
-    threshold_date = (datetime.now(tz) - timedelta(days=days)).isoformat()
+    threshold_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')
 
     try:
         cursor.execute('''
-            DELETE FROM conflicts WHERE last_updated < ? AND is_active = 1
+            SELECT DISTINCT system_name FROM conflicts WHERE timestamp < ? AND is_active = 1
         ''', (threshold_date,))
-
         deleted_systems = [row['system_name'] for row in cursor.fetchall()]
         if deleted_systems:
             cursor.execute('''
-                DELETE FROM conflicts WHERE last_updated < ? AND is_active = 1
+                DELETE FROM conflicts WHERE timestamp < ? AND is_active = 1
             ''', (threshold_date,))
             conn.commit()
             print(f"[DB] Pulizia completata: rimossi {len(deleted_systems)} conflitti obsoleti ({', '.join(deleted_systems)})")
+        else:
+            print("[DB] Nessun conflitto obsoleto trovato nel database.")
         return deleted_systems
     except Exception as e:
         print(f"[DB] Errore durante la pulizia dei vecchi conflitti: {e}")
