@@ -26,7 +26,7 @@ if not DISCORD_TOKEN or not CHANNEL_ID_RAW:
 DISCORD_CHANNEL_ID = int(CHANNEL_ID_RAW)
 
 # ---- CONFIGURATIONS ----
-TARGET_FACTIONS = ["MCC 445 Services", "Expanders Corp"]
+TARGET_FACTIONS = ["MCC 445 Services", "Nat9481 Nobles", "Galileo Corporation"]
 relayEDDN = "tcp://eddn.edcd.io:9500"
 timeoutEDDN = 600000
 

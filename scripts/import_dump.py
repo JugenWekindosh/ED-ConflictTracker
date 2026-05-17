@@ -16,7 +16,7 @@ from core import extract_relevant_conflicts
 
 # ---- CONFIGS ----
 # Factions target
-TARGET_FACTIONS = ["MCC 445 Services", "Expanders Corp"]
+TARGET_FACTIONS = ["MCC 445 Services", "Nat9481 Nobles", "Galileo Corporation"]
 
 # Directory Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
