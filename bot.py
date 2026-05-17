@@ -5,11 +5,12 @@ import zmq.asyncio
 import zlib
 import json
 import os
+import io
 from dotenv import load_dotenv
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from core import get_connection, setup_db, upsert_conflict, get_active_conflicts, cleanup_old_conflicts
+from core import get_connection, setup_db, upsert_conflict, get_active_conflicts, cleanup_old_conflicts, print_active_conflicts
 from core import extract_relevant_conflicts
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,11 +31,11 @@ relayEDDN = "tcp://eddn.edcd.io:9500"
 timeoutEDDN = 600000
 
 # Bot class
-class FactionBot(discord.Client):
+class FactionBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
-        super().__init__(intents=intents)
+        super().__init__(command_prefix='>', intents=intents)
 
         # Initialize database at start
         self.db_conn = get_connection(os.path.join(BASE_DIR, 'data', 'conflicts.db'))
@@ -284,4 +285,56 @@ if __name__ == "__main__":
         print("ERROR: DISCORD_TOKEN not found. Be sure to have a local environment .env file")
     else:
         bot = FactionBot()
+
+
+
+        #--- COMMANDS
+        @bot.command(name="print_database", help="Stampa il contenuto del database dei conflitti attivi in un file .txt.")
+        async def print_database(ctx):
+            channel = bot.get_channel(DISCORD_CHANNEL_ID)
+            if not channel:
+                print(f"Error in print_database command: Channel {DISCORD_CHANNEL_ID} not found")
+                return
+
+            try:
+                cursor = bot.db_conn.cursor()
+                cursor.execute("""
+                            SELECT
+                                system_name AS Sistema,
+                                faction_1 AS Fazione_1,
+                                faction_2 AS Fazione_2,
+                                status AS Stato,
+                                war_type AS Tipo,
+                                f1_days_won AS Giorni_Vinti_1,
+                                f2_days_won AS Giorni_Vinti_2
+                            FROM conflicts
+                            WHERE is_active = 1
+                            ORDER BY is_active DESC, last_updated DESC
+                        """)
+                rows = cursor.fetchall()
+
+                if not rows:
+                    await channel.send("[DB] 'conflicts' table empty!")
+                    return
+
+                headers = [description[0] for description in cursor.description]
+                
+                try:
+                    from tabulate import tabulate
+                    table = (tabulate(rows, headers=headers, tablefmt="grid"))
+                except ImportError:
+                    await channel.send("Error while executing command!")
+                    print(f"In print_database command ImportError tabulate")
+
+                title = "--- CONTENUTO DATABASE CONFLITTI ATTIVI ---\n"
+                end_title = f"\n--- Totale record: {len(rows)} ---\n"
+                msg_string = title + table + end_title
+
+                file_buffer = io.BytesIO(msg_string.encode('utf-8'))
+                discord_file = discord.File(fp=file_buffer, filename="database_conflitti.txt")
+
+                await channel.send(content="Here's your database content :wink:", file=discord_file)
+            except Exception as e:
+                print(f"Errore nel comando print_database durante l'invio del messaggio: {e}")
+
         bot.run(DISCORD_TOKEN)
