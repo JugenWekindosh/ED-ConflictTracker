@@ -1,17 +1,20 @@
 # ED-ConflictTracker
-This repository contains the source code for my personal Discord Bot used as a third-part tool for the videogame [Elite: Dangerous](https://www.elitedangerous.com). The bot is hosted privately and currently it's considered as finished project, but if you want to contribute, you can start from this repo to add more functionalities . The main functionality is to keep track of the ongoing active conflicts in the videogame for a list of specific minor factions. In order to do this, it's implemented a message listener filtering specific schemas from the [EDDN](https://github.com/EDCD/EDDN) network.
+This repository contains the source code for my personal Discord Bot, designed as a **third-party** tool for the videogame [Elite: Dangerous](https://www.elitedangerous.com). While the bot is privately hosted and currently considered a **completed** project, contributions to add new functionalities are welcome. 
 
-## Contents of this repo.
+The main purpose of the bot is to track active conflicts in-game for a specific list of minor factions. To achieve this, it implements a message listener that filters specific schemas from the [EDDN](https://github.com/EDCD/EDDN) network.
+
+## Repository Content
 
 ### /data folder
-This folder contains a database file with information about conflicts from listed factions of interest. If you run separately from the */scripts* folder [import_dump.py](https://github.com/JugenWekindosh/ED-ConflictTracker/blob/main/scripts/import_dump.py), the database will be created and conflicts will be imported from data dumps sourced from [edgalaxydata](https://edgalaxydata.space/). The database is created using SQLite library because only the bot should read and write its content, so there's no problem of database locking due to concurrent services trying to access simultaneusly.
+This folder contains the SQLite database storing conflict information for the factions of interest. By running [import_dump.py](link) from the `/scripts` folder, the database will be initialized and populated with data dumps sourced from [edgalaxydata](https://edgalaxydata.space/). SQLite was chosen for its simplicity since the bot is the sole service reading and writing to the file, avoiding potential database locking issues from concurrent access.
 
 ### /core folder
-This folder contains main methods imported in [bot.py](https://github.com/JugenWekindosh/ED-ConflictTracker/blob/main/bot.py) to manage the database and to parse messages from EDDN.
+This folder contains the core methods imported by `bot.py` to manage database operations and parse EDDN messages.
 
 ### /scripts folder
-This folder contains scripts that should be executed separately from the bot. They are used to test the correct execution of methods contained in the source codes present in */core* folder.
+This folder contains standalone scripts used to test the methods defined in the `/core` directory independently from the main bot execution.
 
-## How the bot works
-First, we use [import_dump.py](https://github.com/JugenWekindosh/ED-ConflictTracker/blob/main/scripts/import_dump.py) script to make a fresh database and fill it with data from dumps. Then the bot keeps track of the current conflicts in the database by listening from EDDN network's messages for real-time activity tracking. When the conflict gets older of 7 days from the message timestamp, it gets deleted from the database
-
+## How it Works
+1. **Initialization**: The `import_dump.py` script is used to create a fresh database and populate it with historical data from dumps.
+2. **Real-time Tracking**: Once active, the bot monitors current conflicts by listening to EDDN network messages for real-time updates.
+3. **Cleanup**: To keep the database relevant, any conflict older than 7 days (based on the message timestamp) is automatically deleted.
