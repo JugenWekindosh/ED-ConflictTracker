@@ -23,6 +23,7 @@ def extract_relevant_conflicts(message_data, target_factions):
             elif status in ['pending']:
                 is_active_val = 0
             else:
+                status = 'None'
                 is_active_val = 0
 
             relevant_conflicts.append({
