@@ -17,19 +17,20 @@ def extract_relevant_conflicts(message_data, target_factions):
         f2_name = c['Faction2']['Name']
         
         if f1_name in target_factions or f2_name in target_factions:
-            if c.get('Status', '').lower() in ['active']:
+            status = c.get('Status', 'None')
+            if status in ['active']:
                 is_active_val = 1
+            elif status in ['pending']:
+                is_active_val = 0
             else:
                 is_active_val = 0
-
-
 
             relevant_conflicts.append({
                 'system': system_name,
                 'faction_1': f1_name,
                 'faction_2': f2_name,
                 'war_type': c.get('WarType', 'unknown'),
-                'status': c.get('Status', 'unknown'),
+                'status': status,
                 'f1_days_won': c['Faction1'].get('WonDays', 0),
                 'f2_days_won': c['Faction2'].get('WonDays', 0),
                 'stake1': c['Faction1'].get('Stake', '----'),
@@ -40,4 +41,3 @@ def extract_relevant_conflicts(message_data, target_factions):
             })
             
     return relevant_conflicts
-

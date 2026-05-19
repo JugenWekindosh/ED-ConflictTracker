@@ -26,7 +26,15 @@ if not DISCORD_TOKEN or not CHANNEL_ID_RAW:
 DISCORD_CHANNEL_ID = int(CHANNEL_ID_RAW)
 
 # ---- CONFIGURATIONS ----
-TARGET_FACTIONS = ["MCC 445 Services", "Nat9481 Nobles", "Galileo Corporation"]
+TARGET_FACTIONS = ["MCC 445 Services", 
+                   "Nat9481 Nobles", 
+                   "Galileo Corporation",
+                   "East India Company",
+                   "Ukrainian Pilots Federation",
+                   "The Buurian Protectorate",
+                   "Nahuaru Crimson Bridge Int",
+                   "Ardhri Alliance",
+                   "Inara Nexus"]
 relayEDDN = "tcp://eddn.edcd.io:9500"
 timeoutEDDN = 600000
 
@@ -116,6 +124,12 @@ class FactionBot(commands.Bot):
 
 
 # ---- FUNCTIONS
+    def _print_conflict(self, conflict):
+        """Stampa il contenuto del conflitto su console"""
+        print("\nStampa conflitto:")
+        for key, value in conflict.items():
+            print(f"{key}: {value}")
+
     def _format_timestamp(self, ts_string):
         """Converte il timestamp EDDN nel formato Giorno Mese Anno Ore:Minuti (Roma)"""
         try:
@@ -195,6 +209,7 @@ class FactionBot(commands.Bot):
             print(f"Error in send_discord_alert: Channel {DISCORD_CHANNEL_ID} not found.")
             return
         try:
+            self._print_conflict(conflict)
             embed, icon_file = self._create_conflict_embed(conflict, event_type)
             await channel.send(embed=embed, file=icon_file)
             print("Discord alert sent")
