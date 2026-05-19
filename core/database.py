@@ -169,10 +169,13 @@ def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f
     # return state result
     if previous_state is None:
         return "NEW"
-    if is_active == 0 and 'ended' in clean_status.lower() and previous_state['is_active'] == 1:
+    if previous_state['is_active'] == 1 and is_active == 0 and 'ended' in clean_status.lower():
         return "CONCLUDED"
     if previous_state['is_active'] == 0 and is_active == 1:
-        return "REACTIVATED"
+        if 'pending' in previous_state['status'] and 'active' in clean_status.lower():
+            return "ACTIVATED"
+        if ('concluded' in previous_state['status'] or '' in previous_state['status']) and 'active' in clean_status.lower():
+            return "REACTIVATED"
     if is_active == 1 and (previous_state['f1_days_won'] != f1_days or previous_state['f2_days_won'] != f2_days):
         return "SCORE_CHANGE"
     return "NO_CHANGE"

@@ -153,7 +153,8 @@ class FactionBot(commands.Bot):
             "REACTIVATED": (":red_circle: GUERRA RIATTIVATA", discord.Color.red()),
             "SCORE_CHANGE": (":orange_circle: AGGIORNAMENTO PUNTEGGIO", discord.Color.orange()),
             "DATABASE": (":blue_circle: STATO CONFLITTO (Database)", discord.Color.blue()),
-            "CONCLUDED": (":green_circle: CONFLITTO CONCLUSO", discord.Color.green())
+            "CONCLUDED": (":green_circle: CONFLITTO CONCLUSO", discord.Color.green()),
+            "ACTIVATED": (":red_circle: GUERRA ATTIVATA", discord.Color.red())
         }
 
         title, color = status_map.get(event_type, status_map["DATABASE"])
