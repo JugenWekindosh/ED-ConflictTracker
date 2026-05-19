@@ -138,12 +138,10 @@ def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f
         stake1, stake2 = stake2, stake1
 
     clean_status = status.strip() if status else ""
-    if clean_status == "":
-        clean_status = "ended"
-    is_active = 1 if clean_status.lower() in ['active'] else 0
+    is_active = 1 if 'active' in clean_status.lower() else 0
 
     cursor.execute('''
-        SELECT f1_days_won, f2_days_won, is_active FROM conflicts 
+        SELECT f1_days_won, f2_days_won, is_active, status FROM conflicts 
         WHERE system_name = ? AND faction_1 = ? AND faction_2 = ?
     ''', (system_name, f_a, f_b))
     
@@ -171,11 +169,12 @@ def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f
     # return state result
     if previous_state is None:
         return "NEW"
-    elif previous_state['is_active'] == 0:
+    if is_active == 0 and 'ended' in clean_status.lower() and previous_state['is_active'] == 1:
+        return "CONCLUDED"
+    if previous_state['is_active'] == 0 and is_active == 1:
         return "REACTIVATED"
-    elif previous_state['f1_days_won'] != f1_days or previous_state['f2_days_won'] != f2_days:
+    if is_active == 1 and (previous_state['f1_days_won'] != f1_days or previous_state['f2_days_won'] != f2_days):
         return "SCORE_CHANGE"
-    
     return "NO_CHANGE"
 
 def cleanup_old_conflicts(conn, days=7):

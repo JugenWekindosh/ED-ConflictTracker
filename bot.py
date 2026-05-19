@@ -96,7 +96,7 @@ class FactionBot(commands.Bot):
                             c['stake1'], c['stake2'], c['timestamp'], "LIVE"
                         )
                         
-                        if result in ["NEW", "REACTIVATED", "SCORE_CHANGE"]:
+                        if result in ["NEW", "REACTIVATED", "SCORE_CHANGE", "CONCLUDED"]:
                             await self.delete_previous_system_messages(c['system'])
                             await self.send_discord_alert(c, result)
             except zmq.error.Again:
@@ -126,7 +126,7 @@ class FactionBot(commands.Bot):
 # ---- FUNCTIONS
     def _print_conflict(self, conflict):
         """Stampa il contenuto del conflitto su console"""
-        print("\nStampa conflitto:")
+        print("\nConflitto rilevato:")
         for key, value in conflict.items():
             print(f"{key}: {value}")
 
@@ -150,9 +150,10 @@ class FactionBot(commands.Bot):
         
         status_map = {
             "NEW": (":red_circle: NUOVA GUERRA RILEVATA", discord.Color.red()),
-            "REACTIVATED": (":red_circle: GUERRA RIATTIVATA (Dati LIVE)", discord.Color.red()),
+            "REACTIVATED": (":red_circle: GUERRA RIATTIVATA", discord.Color.red()),
             "SCORE_CHANGE": (":orange_circle: AGGIORNAMENTO PUNTEGGIO", discord.Color.orange()),
-            "DATABASE": (":blue_circle: STATO CONFLITTO (Database)", discord.Color.blue())
+            "DATABASE": (":blue_circle: STATO CONFLITTO (Database)", discord.Color.blue()),
+            "CONCLUDED": (":green_circle: CONFLITTO CONCLUSO", discord.Color.green())
         }
 
         title, color = status_map.get(event_type, status_map["DATABASE"])
@@ -197,7 +198,7 @@ class FactionBot(commands.Bot):
         embed.add_field(name="Ultimo Update EDDN", value=formatted_date, inline=True)
         embed.add_field(name="Fonte", value=conflict.get('source', 'LIVE'), inline=True)
         
-        embed.set_footer(text="Elite Dangerous Data Network | NovaCorp BGS Bot")
+        embed.set_footer(text="EDDN | NovaCorp Conflict Tracker Bot")
         return embed, icon_file
 
 
