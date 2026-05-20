@@ -166,18 +166,33 @@ def upsert_conflict(conn, system_name, faction_1, faction_2, war_type, status, f
     
     conn.commit()
 
-    # return state result
+    # 1) Check if conflict was not in the database
     if previous_state is None:
-        return "NEW"
-    if previous_state['is_active'] == 1 and is_active == 0 and 'ended' in clean_status.lower():
-        return "CONCLUDED"
-    if previous_state['is_active'] == 0 and is_active == 1:
-        if 'pending' in previous_state['status'] and 'active' in clean_status.lower():
-            return "ACTIVATED"
-        if ('concluded' in previous_state['status'] or '' in previous_state['status']) and 'active' in clean_status.lower():
-            return "REACTIVATED"
-    if is_active == 1 and (previous_state['f1_days_won'] != f1_days or previous_state['f2_days_won'] != f2_days):
-        return "SCORE_CHANGE"
+        if is_active == 0 and 'pending' in clean_status.lower():
+            return "PENDING"
+        if is_active == 1 and 'active' in clean_status.lower():
+            return "NEW"
+        if is_active == 0 and 'concluded' in clean_status.lower():
+            return "CONCLUDED"
+    
+    # 2) Conditions if conflict already present in database
+    if previous_state is not None:
+        if previous_state['is_active'] == 0 and is_active == 1:
+            if 'pending' in previous_state['status'] and 'active' in clean_status.lower():
+                return "ACTIVATED"
+            if 'concluded' in previous_state['status'] and 'active' in clean_status.lower():
+                return "REACTIVATED"
+
+        if is_active == 1 and (previous_state['f1_days_won'] != f1_days or previous_state['f2_days_won'] != f2_days):
+            return "SCORE_CHANGE"
+
+        if previous_state['is_active'] == 1 and is_active == 0:
+            if 'pending' in clean_status.lower():
+                return "PENDING"
+            if 'concluded' in clean_status.lower():
+                return "CONCLUDED"
+    
+    # 3) If no change from previous state 
     return "NO_CHANGE"
 
 def cleanup_old_conflicts(conn, days=7):

@@ -96,7 +96,7 @@ class FactionBot(commands.Bot):
                             c['stake1'], c['stake2'], c['timestamp'], "LIVE"
                         )
                         
-                        if result in ["NEW", "REACTIVATED", "SCORE_CHANGE", "CONCLUDED"]:
+                        if result in ["NEW", "PENDING", "REACTIVATED", "ACTIVATED", "SCORE_CHANGE", "CONCLUDED"]:
                             await self.delete_previous_system_messages(c['system'])
                             await self.send_discord_alert(c, result)
             except zmq.error.Again:
@@ -154,7 +154,8 @@ class FactionBot(commands.Bot):
             "SCORE_CHANGE": (":orange_circle: AGGIORNAMENTO PUNTEGGIO", discord.Color.orange()),
             "DATABASE": (":blue_circle: STATO CONFLITTO (Database)", discord.Color.blue()),
             "CONCLUDED": (":green_circle: CONFLITTO CONCLUSO", discord.Color.green()),
-            "ACTIVATED": (":red_circle: GUERRA ATTIVATA", discord.Color.red())
+            "ACTIVATED": (":red_circle: GUERRA ATTIVATA", discord.Color.red()),
+            "PENDING": (":yellow_circle: CONFLITTO IN ATTESA", discord.Color.yellow())
         }
 
         title, color = status_map.get(event_type, status_map["DATABASE"])
