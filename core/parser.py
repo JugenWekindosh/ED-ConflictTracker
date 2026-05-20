@@ -17,10 +17,10 @@ def extract_relevant_conflicts(message_data, target_factions):
         f2_name = c['Faction2']['Name']
         
         if f1_name in target_factions or f2_name in target_factions:
-            status = c.get('Status', 'None')
-            if status in ['active']:
+            status = c.get('Status', '')
+            if 'active' in status.strip().lower():
                 is_active_val = 1
-            elif status in ['pending']:
+            elif 'pending' in status.strip().lower():
                 is_active_val = 0
             else:
                 status = 'concluded'

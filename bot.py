@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from core import get_connection, setup_db, upsert_conflict, get_active_conflicts, cleanup_old_conflicts, print_active_conflicts
+from core import get_connection, setup_db, upsert_conflict, get_conflicts, cleanup_concluded_conflicts, cleanup_old_conflicts, print_database
 from core import extract_relevant_conflicts
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -37,6 +37,11 @@ TARGET_FACTIONS = ["MCC 445 Services",
                    "Inara Nexus"]
 relayEDDN = "tcp://eddn.edcd.io:9500"
 timeoutEDDN = 600000
+
+
+
+
+
 
 # Bot class
 class FactionBot(commands.Bot):
@@ -100,11 +105,11 @@ class FactionBot(commands.Bot):
                             await self.delete_previous_system_messages(c['system'])
                             await self.send_discord_alert(c, result)
             except zmq.error.Again:
-                print("Timeout ZMQ, continuing to listen...")
+                print("bot.py->eddn_listener: Timeout ZMQ, continuing to listen...")
             except zlib.error:
-                print("Error during message decompression")
+                print("bot.py->eddn_listener: Error during message decompression")
             except json.JSONDecodeError:
-                print("Error during JSON reading")
+                print("bot.py->eddn_listener: Error during JSON reading")
             except Exception as e:
                 print(f"Unexpected error in EDDN listener: {e}")
 
@@ -116,8 +121,14 @@ class FactionBot(commands.Bot):
             if deleted_systems:
                 for system in deleted_systems:
                     await self.delete_previous_system_messages(system)
+
+            deleted_systems = cleanup_concluded_conflicts(self.db_conn)
+            if deleted_systems:
+                for system in deleted_systems:
+                    await self.delete_previous_system_messages(system)
         except Exception as e:
             print(f"Unexcpected error in Daily cleanup: {e}")
+
 
 
 
@@ -126,7 +137,7 @@ class FactionBot(commands.Bot):
 # ---- FUNCTIONS
     def _print_conflict(self, conflict):
         """Stampa il contenuto del conflitto su console"""
-        print("\nConflitto rilevato:")
+        print("\nConflict fetched:")
         for key, value in conflict.items():
             print(f"{key}: {value}")
 
@@ -146,7 +157,7 @@ class FactionBot(commands.Bot):
 
 
     def _create_conflict_embed(self, conflict, event_type=None):
-        """Crea un embed coerente per ogni tipo di aggiornamento"""
+        """Make respective embed for each type of update"""
         
         status_map = {
             "NEW": (":red_circle: NUOVA GUERRA RILEVATA", discord.Color.red()),
@@ -204,12 +215,17 @@ class FactionBot(commands.Bot):
         return embed, icon_file
 
 
+
+
+
+
+
 # ---- ASYNC FUNCTIONS
     async def send_discord_alert(self, conflict, event_type):
-        """Invia alert in tempo reale"""
+        """Send real time alert"""
         channel = self.get_channel(DISCORD_CHANNEL_ID)
         if not channel:
-            print(f"Error in send_discord_alert: Channel {DISCORD_CHANNEL_ID} not found.")
+            print(f"bot.py->send_discord_alert: channel {DISCORD_CHANNEL_ID} not found.")
             return
         try:
             self._print_conflict(conflict)
@@ -217,20 +233,19 @@ class FactionBot(commands.Bot):
             await channel.send(embed=embed, file=icon_file)
             print("Discord alert sent")
         except Exception as e:
-            print(f"Errore durante l'invio dell'alert discord: {e}")
+            print(f"Unexpected error in send_discord_alert: {e}")
 
 
 
     async def send_conflicts_status(self):
-        """Invia lo stato attuale dal database sul canale testuale"""
+        """Send actual conflict state from database to text channel"""
         channel = self.get_channel(DISCORD_CHANNEL_ID)
         if not channel:
-            print(f"Error in send_conflicts_status: Channel {DISCORD_CHANNEL_ID} not found.")
+            print(f"bot.py->send_conflicts_status: channel {DISCORD_CHANNEL_ID} not found.")
             return
 
-        conflicts = get_active_conflicts(self.db_conn)
+        conflicts = get_conflicts(self.db_conn)
         if not conflicts:
-            print("[DB] Tabella conflitti vuota.")
             return
         
         try:
@@ -250,7 +265,7 @@ class FactionBot(commands.Bot):
                     'source': c['source'],
                     'is_active': c['is_active']
                 }
-                if conflict_data['is_active']:
+                if conflict_data['is_active']==1 or ('pending' in conflict_data['status']):
                     embed, icon_file = self._create_conflict_embed(conflict_data, "DATABASE")
                     await channel.send(embed=embed, file=icon_file)
             print("Conflicts status sent")
@@ -260,27 +275,27 @@ class FactionBot(commands.Bot):
 
 
     async def refresh_status_channel(self):
-        """Pulisce il canale"""
+        """Clean up to 100 messages in the channel"""
         channel = self.get_channel(DISCORD_CHANNEL_ID)
         if not channel:
-            print(f"Error in refresh_status_channel: Channel {DISCORD_CHANNEL_ID} not found.")
+            print(f"bot.py->refresh_status_channel: channel {DISCORD_CHANNEL_ID} not found.")
             return
 
-        print("Pulizia canale...")
+        print("Cleaning channel...")
 
         try:
             await channel.purge(limit=100) # Rimuove fino a 100 messaggi recenti
-            print("Completata!")
+            print("Done!")
         except Exception as e:
-            print(f"Errore in refresh_status_channel durante la pulizia del canale: {e}")
+            print(f"Unexpected error in bot.py->refresh_status_channel: {e}")
 
 
 
     async def delete_previous_system_messages(self, system_name):
-        """Cerca e cancella i messaggi precedenti relativi a un sistema specifico nel canale"""
+        """Find and delete previous messages related to a specific system in the channel"""
         channel = self.get_channel(DISCORD_CHANNEL_ID)
         if not channel:
-            print(f"Error in delete_previous_system_messages: Channel {DISCORD_CHANNEL_ID} not found.")
+            print(f"bot.py->delete_previous_system_messages: channel {DISCORD_CHANNEL_ID} not found.")
             return
 
         try:
@@ -293,7 +308,7 @@ class FactionBot(commands.Bot):
                     if embed.title and embed.title.endswith(f" a {system_name}"):
                         await message.delete()
         except Exception as e:
-            print(f"Errore in delete_previous_messages durante la cancellazione del vecchio messaggio per {system_name}: {e}")
+            print(f"Unexpected error in delete_previous_messages while trying to delete {system_name}: {e}")
 
 
 
@@ -307,11 +322,11 @@ if __name__ == "__main__":
 
 
         #--- COMMANDS
-        @bot.command(name="print_database", help="Stampa il contenuto del database dei conflitti attivi in un file .txt.")
-        async def print_database(ctx):
+        @bot.command(name="print_table", help="Stampa il contenuto del database dei conflitti in un file .txt.")
+        async def print_table(ctx):
             channel = bot.get_channel(DISCORD_CHANNEL_ID)
             if not channel:
-                print(f"Error in print_database command: Channel {DISCORD_CHANNEL_ID} not found")
+                print(f"bot.py->print_table command: channel {DISCORD_CHANNEL_ID} not found")
                 return
 
             try:
@@ -322,17 +337,21 @@ if __name__ == "__main__":
                                 faction_1 AS Fazione_1,
                                 faction_2 AS Fazione_2,
                                 status AS Stato,
-                                war_type AS Tipo,
                                 f1_days_won AS Giorni_Vinti_1,
-                                f2_days_won AS Giorni_Vinti_2
+                                f2_days_won AS Giorni_Vinti_2,
+                                stake1 AS Assetto_1,
+                                stake2 AS Assetto_2,
+                                timestamp AS MSG_Timestamp,
+                                last_updated AS Ultimo_Aggiornamento,
+                                source AS Source
                             FROM conflicts
-                            WHERE is_active = 1
                             ORDER BY is_active DESC, last_updated DESC
                         """)
                 rows = cursor.fetchall()
 
                 if not rows:
-                    await channel.send("[DB] 'conflicts' table empty!")
+                    await channel.send("No DATA: 'conflicts' table is empty!")
+                    print("bot.py->print_table command: 'conflicts' table is empty!")
                     return
 
                 headers = [description[0] for description in cursor.description]
@@ -342,7 +361,7 @@ if __name__ == "__main__":
                     table = (tabulate(rows, headers=headers, tablefmt="grid"))
                 except ImportError:
                     await channel.send("Error while executing command!")
-                    print(f"In print_database command ImportError tabulate")
+                    print("bot.py->print_table command: ImportError tabulate")
 
                 title = "--- CONTENUTO DATABASE CONFLITTI ATTIVI ---\n"
                 end_title = f"\n--- Totale record: {len(rows)} ---\n"
@@ -353,6 +372,6 @@ if __name__ == "__main__":
 
                 await channel.send(content="Here's your database content :wink:", file=discord_file)
             except Exception as e:
-                print(f"Errore nel comando print_database durante l'invio del messaggio: {e}")
+                print(f"Unexpected error in print_database command: {e}")
 
         bot.run(DISCORD_TOKEN)
