@@ -28,13 +28,7 @@ DISCORD_CHANNEL_ID = int(CHANNEL_ID_RAW)
 # ---- CONFIGURATIONS ----
 TARGET_FACTIONS = ["MCC 445 Services", 
                    "Nat9481 Nobles", 
-                   "Galileo Corporation",
-                   "East India Company",
-                   "Ukrainian Pilots Federation",
-                   "The Buurian Protectorate",
-                   "Nahuaru Crimson Bridge Int",
-                   "Ardhri Alliance",
-                   "Inara Nexus"]
+                   "Galileo Corporation"]
 relayEDDN = "tcp://eddn.edcd.io:9500"
 timeoutEDDN = 600000
 
