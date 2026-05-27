@@ -129,12 +129,6 @@ class FactionBot(commands.Bot):
 
 
 # ---- FUNCTIONS
-    def _print_conflict(self, conflict):
-        """Stampa il contenuto del conflitto su console"""
-        print("\nConflict fetched:")
-        for key, value in conflict.items():
-            print(f"{key}: {value}")
-
     def _format_timestamp(self, ts_string):
         """Converte il timestamp EDDN nel formato Giorno Mese Anno Ore:Minuti (Roma)"""
         try:
@@ -222,7 +216,7 @@ class FactionBot(commands.Bot):
             print(f"bot.py->send_discord_alert: channel {DISCORD_CHANNEL_ID} not found.")
             return
         try:
-            self._print_conflict(conflict)
+            print("\nConflict fetched: system {conflict['system']}")
             embed, icon_file = self._create_conflict_embed(conflict, event_type)
             await channel.send(embed=embed, file=icon_file)
             print("Discord alert sent")
