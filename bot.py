@@ -216,7 +216,7 @@ class FactionBot(commands.Bot):
             print(f"bot.py->send_discord_alert: channel {DISCORD_CHANNEL_ID} not found.")
             return
         try:
-            print("\nConflict fetched: system {conflict['system']}")
+            print(f"\nConflict fetched: system {conflict['system']}")
             embed, icon_file = self._create_conflict_embed(conflict, event_type)
             await channel.send(embed=embed, file=icon_file)
             print("Discord alert sent")
