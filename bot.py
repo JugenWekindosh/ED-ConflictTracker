@@ -64,7 +64,7 @@ class FactionBot(commands.Bot):
 
 
     # EDDN Listener
-    @tasks.loop()
+    @tasks.loop(minutes=1)
     async def eddn_listener(self):
         """Background task listening to ZMQ messages flux from EDDN relay"""
         print(f'Listening conflicts for: {TARGET_FACTIONS}')
@@ -99,13 +99,21 @@ class FactionBot(commands.Bot):
                             await self.delete_previous_system_messages(c['system'])
                             await self.send_discord_alert(c, result)
             except zmq.error.Again:
-                print("bot.py->eddn_listener: Timeout ZMQ, waiting 10mins to try again...")
+                print("bot.py->eddn_listener: Timeout ZMQ, trying to reconnect...")
+                subscriber.close()
+                subscriber = ctx.socket(zmq.SUB)
+                subscriber.setsockopt(zmq.SUBSCRIBE, b"")
+                subscriber.setsockopt(zmq.RCVTIMEO, timeoutEDDN)
+                subscriber.connect(relayEDDN)
+                await asyncio.sleep(60)
             except zlib.error:
                 print("bot.py->eddn_listener: Error during message decompression")
             except json.JSONDecodeError:
                 print("bot.py->eddn_listener: Error during JSON reading")
             except Exception as e:
                 print(f"Unexpected error in EDDN listener: {e}")
+                subscriber.close()
+                break
 
     # Daily cleanup
     @tasks.loop(hours=12)
