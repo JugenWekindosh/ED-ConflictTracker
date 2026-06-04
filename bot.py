@@ -99,7 +99,7 @@ class FactionBot(commands.Bot):
                             await self.delete_previous_system_messages(c['system'])
                             await self.send_discord_alert(c, result)
             except zmq.error.Again:
-                print("bot.py->eddn_listener: Timeout ZMQ, continuing to listen...")
+                print("bot.py->eddn_listener: Timeout ZMQ, waiting 10mins to try again...")
             except zlib.error:
                 print("bot.py->eddn_listener: Error during message decompression")
             except json.JSONDecodeError:
