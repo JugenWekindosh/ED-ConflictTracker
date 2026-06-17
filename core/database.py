@@ -239,6 +239,40 @@ def cleanup_old_conflicts(conn, days=7):
 
 
 
+def cleanup_obsolete_pending_conflicts(conn, days=7):
+    cursor = conn.cursor()
+    threshold_date = (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    try:
+        cursor.execute('''
+            SELECT DISTINCT system_name FROM conflicts WHERE
+            is_active = 0 AND status = 'pending' AND timestamp < ?
+        ''', (threshold_date,))
+
+        deleted_systems = [row['system_name'] for row in cursor.fetchall()]
+        if deleted_systems:
+            cursor.execute('''
+                DELETE FROM conflicts WHERE
+                is_active = 0 AND status = 'pending' AND timestamp < ?
+            ''', (threshold_date,))
+            conn.commit()
+            print(f"[DB] Cleaning complete: removed {len(deleted_systems)} obsolete pending conflicts ({', '.join(deleted_systems)})")
+        
+        else:
+            print("[DB] No obsolete pending conflict found in database.")
+        return deleted_systems
+
+    except sqlite3.OperationalError as e:
+        if "no such table" in str(e).lower():
+            print("[DB] Error in cleanup_obsolete_pending_conflicts: table does not exist")
+        else:
+            print(f"[DB] Unexepcted sqlite3 error in cleanup_obsolete_pending_conflicts: {e}")
+        return []
+    except Exception as e:
+        print(f"[DB] Errore durante la pulizia dei conflitti in attesa obsoleti: {e}")
+        return []
+
+
 
 def cleanup_concluded_conflicts(conn):
     cursor = conn.cursor()

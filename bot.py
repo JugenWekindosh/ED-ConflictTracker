@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from core import get_connection, setup_db, upsert_conflict, get_conflicts, cleanup_concluded_conflicts, cleanup_old_conflicts, print_database
+from core import get_connection, setup_db, upsert_conflict, get_conflicts, cleanup_concluded_conflicts, cleanup_old_conflicts, cleanup_obsolete_pending_conflicts, print_database
 from core import extract_relevant_conflicts
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -125,6 +125,11 @@ class FactionBot(commands.Bot):
                     await self.delete_previous_system_messages(system)
 
             deleted_systems = cleanup_concluded_conflicts(self.db_conn)
+            if deleted_systems:
+                for system in deleted_systems:
+                    await self.delete_previous_system_messages(system)
+
+            deleted_systems = cleanup_obsolete_pending_conflicts(self.db_conn)
             if deleted_systems:
                 for system in deleted_systems:
                     await self.delete_previous_system_messages(system)
