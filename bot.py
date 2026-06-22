@@ -6,6 +6,7 @@ import zlib
 import json
 import os
 import io
+import asyncio
 from dotenv import load_dotenv
 from datetime import datetime
 from zoneinfo import ZoneInfo
